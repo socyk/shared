@@ -1,0 +1,2731 @@
+if not LPH_OBFUSCATED then
+	local assert, type, setfenv = assert, type, setfenv
+	LPH_ENCNUM = function(toEncrypt, ...)
+		assert(
+			type(toEncrypt) == "number" and #{ ... } == 0,
+			"LPH_ENCNUM only accepts a single constant double or integer as an argument."
+		)
+		return toEncrypt
+	end
+	--
+	LPH_NUMENC = LPH_ENCNUM
+	--
+	LPH_ENCSTR = function(toEncrypt, ...)
+		assert(
+			type(toEncrypt) == "string" and #{ ... } == 0,
+			"LPH_ENCSTR only accepts a single constant string as an argument."
+		)
+		return toEncrypt
+	end
+	--
+	LPH_STRENC = LPH_ENCSTR
+	--
+	LPH_ENCFUNC = function(toEncrypt, encKey, decKey, ...)
+		assert(
+			type(toEncrypt) == "function" and type(encKey) == "string" and #{ ... } == 0,
+			"LPH_ENCFUNC accepts a constant function, constant string, and string variable as arguments."
+		)
+		return toEncrypt
+	end
+	--
+	LPH_FUNCENC = LPH_ENCFUNC
+	--
+	LPH_JIT = function(f, ...)
+		assert(
+			type(f) == "function" and #{ ... } == 0,
+			"LPH_JIT only accepts a single constant function as an argument."
+		)
+		return f
+	end
+	--
+	LPH_JIT_MAX = LPH_JIT
+	--
+	LPH_NO_VIRTUALIZE = function(f, ...)
+		assert(
+			type(f) == "function" and #{ ... } == 0,
+			"LPH_NO_VIRTUALIZE only accepts a single constant function as an argument."
+		)
+		return f
+	end
+	--
+	LPH_NO_UPVALUES = function(f, ...)
+		assert(type(setfenv) == "function", "LPH_NO_UPVALUES can only be used on Lua versions with getfenv & setfenv")
+		assert(
+			type(f) == "function" and #{ ... } == 0,
+			"LPH_NO_UPVALUES only accepts a single constant function as an argument."
+		)
+		return f
+	end
+	--
+	LPH_CRASH = function(...)
+		assert(#{ ... } == 0, "LPH_CRASH does not accept any arguments.")
+	end
+end
+--
+local wrap = LPH_NO_VIRTUALIZE(function(f)
+	coroutine.resume(coroutine.create(f))
+end)
+--
+math.randomseed(tick())
+_G = ({
+	getreg,
+	getgc,
+	function()
+		return getfenv(0)
+	end,
+	getrenv,
+})[math.random(4)]()
+_G.dev_optix = {}
+local dev_optix = _G.dev_optix
+--
+if messagebox and not dev_optix then
+	messagebox(
+		"You are not running on the Actor environment.\nPlease execute actor bypass, rejoin, then execute the script.",
+		"Environment Warning",
+		0
+	)
+end
+--
+dev_optix.custom_modules = {}
+dev_optix.weapon_tables = {}
+dev_optix.seen = {}
+dev_optix.esp_objects = {}
+for _, v in ipairs(getgc(true)) do
+	if typeof(v) == "function" and islclosure(v) then
+		local src = debug.info(v, "s")
+		local name = debug.info(v, "n")
+		if src:find(".BowSpecial") and name == "update" then
+			dev_optix.custom_modules.Character = debug.getupvalue(v, 13)
+			dev_optix.custom_modules.Camera = debug.getupvalue(v, 15)
+			dev_optix.custom_modules.Network = debug.getupvalue(v, 19)
+		elseif src:find(".Character") and name == "getGroundCastResult" then
+			dev_optix.custom_modules.FPS = debug.getupvalue(v, 2)
+			dev_optix.custom_modules.FPS2 = debug.getupvalue(v, 3)
+		elseif src:find(".Character") and name == "updateCharacter" then
+			dev_optix.custom_modules.Player = debug.getupvalue(v, 4)
+			dev_optix.custom_modules.Player2 = debug.getupvalue(v, 6)
+			dev_optix.custom_modules.Player3 = debug.getupvalue(v, 14)
+			dev_optix.custom_modules.Player4 = debug.getupvalue(v, 15)
+			dev_optix.custom_modules.Player5 = debug.getupvalue(v, 21)
+			dev_optix.custom_modules.Player6 = debug.getupvalue(v, 28)
+			dev_optix.custom_modules.Player7 = debug.getupvalue(v, 32)
+		end
+	end
+end
+--
+dev_optix.hook_func = hookfunction
+dev_optix.newc_closure = newcclosure
+dev_optix.weapon_recoil, dev_optix.weapon_spread, dev_optix.weapon_reload, dev_optix.weapon_cooldown, dev_optix.weapon_autofire, dev_optix.weapon_equip, dev_optix.bow_pull, dev_optix.bow_aimspeed =
+	false, false, false, false, false, false, false, false
+dev_optix.recoil_x, dev_optix.recoil_y, dev_optix.spread_amt, dev_optix.reload_time, dev_optix.cooldown_time, dev_optix.fire_mode, dev_optix.bow_pulltime, dev_optix.bow_aimspd, dev_optix.equiptime =
+	100, 100, 100, 0, 0, "auto", 0, 0.3, 0
+dev_optix.os_clock = os.clock()
+dev_optix.work_space, dev_optix.custom_cam = cloneref(game:GetService("Workspace")), workspace.CurrentCamera
+dev_optix.user_input, dev_optix.R_S, dev_optix.replicated_storage =
+	cloneref(game:GetService("UserInputService")),
+	cloneref(game:GetService("RunService")),
+	cloneref(game:GetService("ReplicatedStorage"))
+--
+do
+	local Library = loadstring(
+		request({ Url = "https://raw.githubusercontent.com/DHRFV2/Main/refs/heads/main/Libs/UI.lua", Method = "GET" }).Body
+	)()
+	--
+	local Tabs = {
+		main = Library:addTab("main", ""),
+		combat = Library:addTab("combat", ""),
+		visuals = Library:addTab("visuals", ""),
+		misc = Library:addTab("misc", ""),
+		world = Library:addTab("world", ""),
+		entity = Library:addTab("entitys", ""),
+		settings = Library:addTab("settings", ""),
+	}
+	--
+	function dev_optix:custom_create(className, properties)
+		local success, object = pcall(Drawing.new, className)
+		if not success or not object then
+			return nil
+		end
+		for prop, value in next, properties or {} do
+			pcall(function()
+				object[prop] = value
+			end)
+		end
+		return object
+	end
+	--
+	dev_optix.script_settings = {
+		destroy_replication = false,
+		IronOreEsp = false,
+		StoneOreEsp = false,
+		NitrateOreEsp = false,
+		LootSafeEsp = false,
+		hbcheck = false,
+		invistoggle = false,
+		Resolver = false,
+		silent = false,
+		jump_shoot = false,
+		always_sprint = false,
+		magicbullet = false,
+		norecoil = false,
+		hitchance = 100,
+		HbOverider = false,
+		BackPackEsp = false,
+		ClaimTotemEsp = false,
+		DroppedItemEsp = false,
+		TransportCrateEsp = false,
+		MetalCrateEsp = false,
+		LootSafeEsp = false,
+		CabinetEsp = false,
+		BearTrapEsp = false,
+		NitrateOreEsp = false,
+		TeslaPylonEsp = false,
+		PartsBoxEsp = false,
+		IronOreEsp = false,
+		StoneOreEsp = false,
+		MagicDestroy = false,
+		DinkHitSound = false,
+		hbcheck1 = false,
+		MbCheck2 = false,
+		silentwalk = false,
+		Manipulation = {
+			Enabled = false,
+			Angles = 15,
+			Radius = 4,
+			Direction = "Normal",
+			Vector = Vector3.new(0, 0, 0),
+		},
+	}
+	--
+	do --[ replacements
+		do --[ siletaim
+			local fov_circle = dev_optix:custom_create(
+				"Circle",
+				{ Radius = 300, Color = Color3.fromRGB(45, 116, 202), Visible = true }
+			)
+			local Line = dev_optix:custom_create(
+				"Line",
+				{ Color = Color3.fromRGB(255, 255, 255), Visible = true, Thickness = 1.3, ZIndex = 3 }
+			)
+			local LineO = dev_optix:custom_create(
+				"Line",
+				{ Color = Color3.fromRGB(0, 0, 0), Visible = true, Thickness = 3, ZIndex = 2 }
+			)
+			local text = dev_optix:custom_create(
+				"Text",
+				{
+					Text = "optix.wtf - Dev Version",
+					Size = 22,
+					Color = Color3.fromRGB(255, 255, 255),
+					Outline = true,
+					OutlineColor = Color3.fromRGB(0, 0, 0),
+					Visible = true,
+				}
+			)
+			local BackPackText = dev_optix:custom_create(
+				"Text",
+				{
+					Text = "BackPack",
+					Size = 22,
+					Color = Color3.fromRGB(255, 255, 255),
+					Outline = true,
+					OutlineColor = Color3.fromRGB(0, 0, 0),
+					Visible = false,
+				}
+			)
+			local InvisibleText = dev_optix:custom_create(
+				"Text",
+				{
+					Text = "Invisible",
+					Size = 17,
+					Color = Color3.fromRGB(255, 255, 255),
+					Outline = true,
+					OutlineColor = Color3.fromRGB(0, 0, 0),
+					Position = Vector2.new(
+						dev_optix.work_space.CurrentCamera.ViewportSize.X - 190,
+						dev_optix.work_space.CurrentCamera.ViewportSize.Y / 2 + 5
+					),
+					Center = false,
+					Visible = false,
+				}
+			)
+			local magic_text = dev_optix:custom_create(
+				"Text",
+				{
+					Text = "Simulated",
+					Size = 17,
+					Color = Color3.fromRGB(255, 255, 255),
+					Outline = true,
+					OutlineColor = Color3.fromRGB(0, 0, 0),
+					Center = true,
+					Visible = false,
+				}
+			)
+			--
+			local screenCenter =
+				Vector2.new(dev_optix.custom_cam.ViewportSize.X / 2, dev_optix.custom_cam.ViewportSize.Y / 2)
+			local touchenabled, hue, speed = dev_optix.user_input.TouchEnabled, 0, 0.7
+			--
+			function dev_optix:get_target()
+				local t, d, sc = nil, math.huge, screenCenter
+				local list = table.clone(debug.getupvalue(dev_optix.custom_modules.Player3.GetPlayerModel, 1))
+				table.move(dev_optix.custom_modules.Player4.List, 1, math.huge, #list + 1, list)
+				for _, v in next, list do
+					local m, h = v.model, v.model and v.model:FindFirstChild("Head")
+					local typ = v.typ
+					local is_ghoul = typ == "Ghoul" or typ == "GhoulBrute" or typ == "GhoulRoamer"
+					if h and (is_ghoul or not v.sleeping) then
+						local p, o = dev_optix.custom_cam:WorldToViewportPoint(h.Position)
+						if o then
+							local dist = (Vector2.new(p.X, p.Y) - sc).Magnitude
+							if dist < d then
+								t, d = v, dist
+							end
+						end
+					end
+				end
+				return t
+			end
+			--
+			dev_optix.R_S.RenderStepped:Connect(LPH_NO_VIRTUALIZE(function(dt)
+				screenCenter =
+					Vector2.new(dev_optix.custom_cam.ViewportSize.X / 2, dev_optix.custom_cam.ViewportSize.Y / 2)
+				hue = (hue + dt * speed * 100) % 360
+				local col = Color3.fromHSV(hue / 360, 1, 1)
+				text.Color, fov_circle.Color = col, col
+				fov_circle.Position = touchenabled and screenCenter or dev_optix.user_input:GetMouseLocation()
+				local bounds = text.TextBounds
+				text.Position = Vector2.new((dev_optix.custom_cam.ViewportSize.X - bounds.X) / 2, 10)
+				InvisibleText.Color = col
+				--[[
+            ManipText.Color = col
+            ManipText.Position = screenCenter
+            --]]
+				local s = screenCenter
+				local i = dev_optix.work_space:FindFirstChild("Ignore")
+				local m = i
+					and i:FindFirstChild("FPSArms")
+					and i.FPSArms:FindFirstChild("HandModel")
+					and i.FPSArms.HandModel:FindFirstChild("Muzzle")
+				if m then
+					local p, o = dev_optix.custom_cam:WorldToViewportPoint(m.Position)
+					if o then
+						s = Vector2.new(p.X, p.Y)
+					end
+				end
+				--
+				local t = dev_optix:get_target()
+				dev_optix.silent_target = t
+				local h = t and t.model and t.model:FindFirstChild("Head")
+				if h then
+					local p, o = dev_optix.custom_cam:WorldToViewportPoint(h.Position)
+					if o then
+						local to = Vector2.new(p.X, p.Y)
+						Line.From, LineO.From, Line.To, LineO.To = s, s, to, to
+						Line.Color = col
+						Line.Visible, LineO.Visible = true, true
+					else
+						Line.Visible, LineO.Visible = false, false
+					end
+				else
+					Line.Visible, LineO.Visible = false, false
+				end
+			end))
+			--
+			function dev_optix:projectile_drop()
+				local mod = dev_optix.custom_modules.FPS.GetEquippedItem()
+				if not mod or not mod.id then
+					return 0, 0
+				end
+				local itemConfig = require(dev_optix.replicated_storage.ItemConfigs[mod.id])
+				return mod.id, itemConfig.ProjectileSpeed, itemConfig.ProjectileDrop, itemConfig.TracerPart
+			end
+			--
+			function dev_optix:weapon_pred(origin, target, speed, drop, velocity, startPos, goalPos, prog)
+				local displacement = target - origin
+				local dist = displacement.Magnitude
+				local t = dist / speed
+				local movePos = startPos:Lerp(goalPos, math.clamp(prog + t, 0, 1))
+				local y = target.Y + (drop ^ (t * drop)) - 1
+				return Vector3.new(movePos.X, y, movePos.Z)
+			end
+			--
+			dev_optix.custom_modules.Camera.silent_aim = function()
+				local origin = dev_optix.custom_modules.Camera.GetCFrame()
+				local target = dev_optix.silent_target
+				local id, speed, drop = dev_optix:projectile_drop()
+				if target and id and dev_optix.script_settings.silent and target.model and target.model.Head then
+					local predictedPosition = dev_optix:weapon_pred(
+						origin.Position,
+						target.model.Head.Position,
+						speed,
+						drop,
+						target.velocityVector,
+						target.startPosition,
+						target.goalPosition,
+						target.goalProgression,
+						target.currentPosition,
+						target.goalAngleX,
+						target.startAngleX,
+						target.goalAngleY,
+						target.startAngleY
+					)
+					if dev_optix.script_settings.silent then
+						return CFrame.lookAt(origin.Position, predictedPosition)
+					end
+				end
+				return origin
+			end
+			--
+			local S1lent = Tabs.combat:createGroup("left", "Silent Aim")
+			--
+			S1lent:addToggle({
+				text = "silent_aim",
+				default = false,
+				flag = "silent_aim",
+				callback = function(state)
+					dev_optix.script_settings.silent = state
+				end,
+			})
+			--
+			S1lent:addToggle({
+				text = "fov_circle",
+				default = false,
+				flag = "fov_circle",
+				callback = function(state)
+					fov_circle.Visible = state
+				end,
+			})
+			--
+			S1lent:addSlider({
+				text = "fov_radius",
+				min = 0,
+				max = 1500,
+				suffix = "%",
+				float = 1,
+				default = 0,
+				flag = "fov_radius",
+				callback = function(Value)
+					fov_circle.Radius = Value
+				end,
+			})
+			--
+			dev_optix.health_list, dev_optix.cache = {}, {}
+			local player_list = debug.getupvalue(dev_optix.custom_modules.Player3.GetPlayerModel, 1)
+			local time_tick = tick()
+			dev_optix.work_space, dev_optix.custom_cam = cloneref(game:GetService("Workspace")), workspace.CurrentCamera
+			dev_optix.user_input, dev_optix.R_S, dev_optix.replicated_storage =
+				cloneref(game:GetService("UserInputService")),
+				cloneref(game:GetService("RunService")),
+				cloneref(game:GetService("ReplicatedStorage"))
+			--
+			dev_optix.R_S.Heartbeat:Connect(LPH_NO_VIRTUALIZE(function()
+				task.spawn(function()
+					if tick() - time_tick >= 5 then
+						time_tick = tick()
+						for _, plr in pairs(player_list) do
+							if plr.model:FindFirstChild("HumanoidRootPart") and dev_optix.health_list[plr.id] then
+								local before = dev_optix.health_list[plr.id]
+								dev_optix.health_list[plr.id] = math.clamp(before + 1, 0, 100)
+							end
+						end
+					end
+				end)
+			end))
+			--
+			function dev_optix:round(v)
+				return math.floor(v * 10 + 0.5) / 10
+			end
+			--
+			function dev_optix:predict_hp(dmg, prot, part, hp)
+				if not (dmg and prot and part and hp) then
+					return 0
+				end
+				local mult = part == "Head" and 1.752 * (1 - prot) or 1 - prot
+				local result = dev_optix:round(hp - dev_optix:round(dmg * mult))
+				return result
+			end
+			--
+			function dev_optix:get_armor(plr, hit)
+				if not plr or not plr.model:FindFirstChild("HumanoidRootPart") then
+					return
+				end
+				local armor_part = plr.model:FindFirstChild("Armor")
+				if not armor_part then
+					return
+				end
+				for _, v in pairs(armor_part:GetChildren()) do
+					if (hit == "Head" and v.Name:find("Helmet")) or (hit ~= "Head" and v.Name:find("Chestplate")) then
+						return v.Name
+					end
+				end
+			end
+			--
+			function dev_optix:get_protection(plr, hit)
+				local armor = dev_optix:get_armor(plr, hit)
+				if armor and game:GetService("ReplicatedStorage").EntityGhosts[armor] then
+					print("wow armor found")
+					for i, v in pairs(game:GetService("ReplicatedStorage").EntityGhosts[armor]) do
+						if i:find("Protection") then
+							print("protection Found")
+							return v
+						end
+					end
+				end
+				return 0
+			end
+			--
+			local health_prediction
+			health_prediction = hookfunction(
+				game.Players.LocalPlayer.RemoteEvent.FireServer,
+				newcclosure(function(...)
+					local a = { ... }
+					if a[1] == 10 and typeof(a[5]) == "number" then
+						task.spawn(function()
+							local plr = dev_optix.cache[a[5]]
+							if plr and dev_optix.get_weapon_damage then
+								local dmg = dev_optix.get_weapon_damage()
+								local part = (a[6] == "Head") and "Head" or a[6]
+								local hp = 100
+								print(("[FireServer] Predicting damage for %s on %s"):format(a[5], part))
+								if dev_optix.health_list[a[5]] then
+									hp = dev_optix:predict_hp(
+										dmg,
+										dev_optix:get_protection(plr, part),
+										part,
+										dev_optix.health_list[a[5]]
+									)
+									print(hp)
+									dev_optix.health_list[a[5]] = hp
+								else
+								end
+							end
+						end)
+					end
+					return health_prediction(...)
+				end)
+			)
+			--
+			dev_optix.custom_tracers = false
+			dev_optix.tracers_color = Color3.fromRGB(255, 255, 255)
+			--
+			function dev_optix:check_cam(pos)
+				return (pos - dev_optix.custom_cam.CFrame.Position).Unit:Dot(dev_optix.custom_cam.CFrame.LookVector) > 0
+			end
+			--
+			function dev_optix:on_screen(pos)
+				local _, onScreen = dev_optix.custom_cam:WorldToViewportPoint(pos)
+				return onScreen
+			end
+			--
+			function dev_optix:draw_line(To)
+				dev_optix.custom_duration = 5
+				local line2 = self:custom_create(
+					"Line",
+					{ Color = self.tracers_color, Visible = false, Thickness = 1.3, ZIndex = 3 }
+				)
+				local line3 =
+					self:custom_create("Line", { Color = Color3.new(), Visible = false, Thickness = 3, ZIndex = 2 })
+				local cPos = dev_optix.custom_cam.CFrame.Position + dev_optix.custom_cam.CFrame.LookVector * 3
+				local connection
+				connection = dev_optix.R_S.RenderStepped:Connect(LPH_NO_VIRTUALIZE(function()
+					local start_screen_pos = dev_optix.custom_cam:WorldToViewportPoint(cPos)
+					local end_screen_pos = dev_optix.custom_cam:WorldToViewportPoint(To)
+					local startVec = Vector2.new(start_screen_pos.X, start_screen_pos.Y)
+					local endVec = Vector2.new(end_screen_pos.X, end_screen_pos.Y)
+					local visible = self:check_cam(cPos) and self:check_cam(To)
+					line2.Visible = visible
+					line3.Visible = visible
+					if visible then
+						line2.From = startVec
+						line2.To = endVec
+						line3.From = startVec
+						line3.To = endVec
+					end
+				end))
+				task.delay(dev_optix.custom_duration, function()
+					if not self:on_screen(To) then
+						if line2 then
+							line2:Destroy()
+							line2 = nil
+						end
+						if line3 then
+							line3:Destroy()
+							line3 = nil
+						end
+					end
+					if line2 then
+						line2:Destroy()
+					end
+					if line3 then
+						line3:Destroy()
+					end
+					if connection then
+						connection:Disconnect()
+					end
+				end)
+			end
+			--
+			function dev_optix:player_hitsound()
+				local sound = Instance.new("Sound")
+				sound.SoundId = "rbxassetid://988593556"
+				sound.Volume = 1.5
+				sound.PlaybackSpeed = 1
+				sound.RollOffMaxDistance = 10000
+				sound.Parent = cloneref(game:GetService("SoundService"))
+				sound:Play()
+				sound.Ended:Connect(function()
+					sound:Destroy()
+				end)
+			end
+			--
+			dev_optix.magic_bullet = false
+			dev_optix.fire_server = game:GetService("Players").LocalPlayer.RemoteEvent.FireServer
+			dev_optix.target = nil
+			--
+			function dev_optix:magic_points(target, projectile_speed, projectile_drop)
+				local head = target:FindFirstChild("Head")
+				if not head then
+					return
+				end
+				local origin = workspace.Ignore.LocalCharacter.Middle.Position
+				local target_pos = head.Position
+				local max_distance = 1000
+				local step = 100
+				local resolution = 100
+				local ray_params = RaycastParams.new()
+				ray_params.FilterDescendantsInstances = { workspace.Ignore }
+				ray_params.FilterType = Enum.RaycastFilterType.Exclude
+				ray_params.CollisionGroup = "WeaponRaycast"
+				ray_params.IgnoreWater = true
+				local best_point = nil
+				local min_error = math.huge
+				local target_cf = target.PrimaryPart and target.PrimaryPart.CFrame or CFrame.lookAt(target_pos, origin)
+				for i = 1, resolution do
+					local angle = (i / resolution) * math.pi * 2
+					local offset_dir = Vector3.new(math.cos(angle), 0, math.sin(angle))
+					local dir = target_cf:VectorToWorldSpace(offset_dir).Unit
+					for d = step, max_distance, step do
+						local flat = target_pos + dir * d
+						local distance = (flat - origin).Magnitude
+						local t = distance / projectile_speed
+						local drop_offset = -projectile_drop ^ (t * projectile_drop) + 1
+						local predicted_y = head.Position.Y + drop_offset
+						local predicted = flat + Vector3.new(0, predicted_y - flat.Y, 0)
+						local ray_from_target = workspace:Raycast(target_pos, predicted - target_pos, ray_params)
+						local ray_from_origin = workspace:Raycast(origin, predicted - origin, ray_params)
+						if not ray_from_target and not ray_from_origin then
+							local error = (predicted - origin).Magnitude
+							if error < min_error then
+								min_error = error
+								best_point = predicted
+							end
+							break
+						end
+					end
+				end
+				dev_optix.magic_point = best_point
+				return best_point
+			end
+			--
+			local m_b
+			m_b = hookfunction(
+				game:GetService("Players").LocalPlayer.RemoteEvent.FireServer,
+				newcclosure(function(self, ...)
+					local args = { ... }
+					if args[1] == 10 and args[2] == "Fire" and dev_optix.target and dev_optix.magic_bullet then
+						task.spawn(function()
+							if
+								dev_optix.target
+								and dev_optix.target.model
+								and dev_optix.target.model:FindFirstChild("Head")
+							then
+								local origin = dev_optix.custom_modules.Camera.GetCFrame()
+								local itemId, projectileSpeed, projectileDrop, TracerPart = dev_optix:projectile_drop()
+								warn(TracerPart)
+								local calcangle =
+									dev_optix:magic_points(dev_optix.target.model, projectileSpeed, projectileDrop)
+								if calcangle and dev_optix.target.id then
+									local timetohit = (workspace.CurrentCamera.CFrame.p - calcangle).Magnitude
+										/ (projectileSpeed or 1)
+									warn(timetohit)
+									args[4] = CFrame.new(args[4].p, calcangle)
+									task.wait(timetohit)
+									dev_optix.fire_server(
+										self,
+										10,
+										"Hit",
+										args[3],
+										timetohit,
+										dev_optix.target.id,
+										"Head",
+										Vector3.new(0, 0, 0),
+										calcangle
+									)
+									dev_optix:player_hitsound()
+								end
+							end
+						end)
+					end
+					return m_b(self, unpack(args))
+				end)
+			)
+			--
+			task.spawn(function()
+				while true do
+					task.wait()
+					dev_optix.target = dev_optix:get_target()
+				end
+			end)
+			--
+			local mb = Tabs.combat:createGroup("right", "magic_bullet")
+			--
+			mb:addToggle({
+				text = "magic_bullet",
+				default = false,
+				flag = "magic_bullet",
+				callback = function(state)
+					dev_optix.magic_bullet = state
+				end,
+			})
+			--
+			local MaxDistance = 10
+			local LocalPlayer = game:GetService("Players").LocalPlayer
+			local screenCenter =
+				Vector2.new(dev_optix.custom_cam.ViewportSize.X / 2, dev_optix.custom_cam.ViewportSize.Y / 2)
+			local lastActionTime = 0
+			local actionCooldown = 0.82
+			local state = "idle"
+			local KillAuraEnabled = true
+			local ValidWeapons = {
+				Hammer = true,
+				StoneHammer = true,
+				IronHammer = true,
+				SteelHammer = true,
+				MiningDrill = true,
+				Crowbar = true,
+				Kabar = true,
+			}
+			--
+			game:GetService("RunService").Heartbeat:Connect(LPH_NO_VIRTUALIZE(function()
+				if not KillAuraEnabled then
+					return
+				end
+				local weaponId = dev_optix:projectile_drop()
+				if not ValidWeapons[weaponId] then
+					return
+				end
+				local closestTarget, closestDistance = nil, math.huge
+				for _, v in next, debug.getupvalue(dev_optix.custom_modules.Player3.GetPlayerModel, 1) do
+					local head = v and v.model and v.model:FindFirstChild("Head")
+					if head and not v.sleeping then
+						local screenPos, onScreen = dev_optix.custom_cam:WorldToViewportPoint(head.Position)
+						if onScreen then
+							local dist = (Vector2.new(screenPos.X, screenPos.Y) - screenCenter).Magnitude
+							if dist < closestDistance then
+								closestTarget, closestDistance = v, dist
+							end
+						end
+					end
+				end
+				local KillAuraTarget = closestTarget
+				if not KillAuraTarget then
+					return
+				end
+				local humanoidRootPart = KillAuraTarget.model:FindFirstChild("HumanoidRootPart")
+				if not humanoidRootPart then
+					return
+				end
+				local distance = (
+					dev_optix.work_space.Ignore.LocalCharacter.Middle.Position - humanoidRootPart.Position
+				).Magnitude
+				if distance > MaxDistance then
+					return
+				end
+				local currentTime = tick()
+				if state == "idle" and currentTime - lastActionTime >= actionCooldown then
+					state = "swinging"
+					lastActionTime = currentTime
+					pcall(function()
+						LocalPlayer.RemoteEvent:FireServer(10, "Swing")
+					end)
+				end
+				if state == "swinging" and currentTime - lastActionTime >= actionCooldown then
+					state = "hitting"
+					lastActionTime = currentTime
+					pcall(function()
+						LocalPlayer.RemoteEvent:FireServer(
+							10,
+							"Hit",
+							KillAuraTarget.id,
+							humanoidRootPart.Position,
+							"Head",
+							Vector3.new(0, 0, 0)
+						)
+						if dev_optix.script_settings.DinkHitSound then
+							dev_optix:player_hitsound()
+						end
+					end)
+				end
+				if state == "hitting" then
+					state = "idle"
+				end
+			end))
+			--
+			local ka = Tabs.combat:createGroup("right", "kill_aura")
+			ka:addToggle({
+				text = "kill_aura",
+				default = false,
+				flag = "kill_aura",
+				callback = function(state)
+					KillAuraEnabled = state
+				end,
+			})
+			--
+			ka:addSlider({
+				text = "Kill_Aura_Distance",
+				min = 0,
+				max = 10,
+				suffix = "%",
+				float = 0.1,
+				default = 0,
+				flag = "Kill_Aura_Distance",
+				callback = function(Value)
+					MaxDistance = Value
+				end,
+			})
+			--
+			local viseffects = Tabs.visuals:createGroup("right", "visuals_affects")
+			--
+			viseffects
+				:addToggle({
+					text = "hit_tracers",
+					default = false,
+					flag = "hit_tracers",
+					callback = function(Value)
+						dev_optix.custom_tracers = Value
+					end,
+				})
+				:addColorpicker({
+					text = "tracers_color",
+					ontop = false,
+					flag = "tracers_color",
+					color = Color3.fromRGB(255, 255, 255),
+					callback = function(Value)
+						dev_optix.tracers_color = Value
+					end,
+				})
+			viseffects:addSlider({
+				text = "tracer_lifetim",
+				min = 0,
+				max = 10,
+				suffix = "%",
+				float = 0.1,
+				default = 0,
+				flag = "tracer_lifetim",
+				callback = function(Value)
+					dev_optix.custom_duration = Value
+				end,
+			})
+			--
+			getgenv().hb_bypass = false
+			local accessing = false
+			local spooed_hitbox
+			spooed_hitbox = dev_optix.hook_func(
+				game:GetService("Players").LocalPlayer.RemoteEvent.FireServer,
+				dev_optix.newc_closure(function(self, ...)
+					local a = { ... }
+					if a[1] == 10 then
+						if
+							a[2] == "Hit"
+							and (a[6] == "Torso" or a[6] == "Head")
+							and dev_optix.script_settings.HbOverider
+						then
+							a[6] = "Head"
+							a[7] = Vector3.zero
+							if dev_optix.script_settings.DinkHitSound then
+								dev_optix:player_hitsound()
+							end
+							if dev_optix.custom_tracers then
+								spawn(function()
+									dev_optix:draw_line(a[8])
+								end)
+							end
+						elseif a[2] == "Fire" then
+							local closest = dev_optix.silent_target
+							if getgenv().hb_bypass and closest and closest.model and closest.model.Head then
+								local _, spd, drop = dev_optix:projectile_drop()
+								local origin = dev_optix.custom_modules.Camera.GetCFrame().Position
+								local head = closest.model.Head.Position
+								local pred = dev_optix:weapon_pred(
+									origin,
+									head,
+									spd,
+									drop,
+									closest.velocityVector,
+									closest.startPosition,
+									closest.goalPosition,
+									closest.goalProgression,
+									closest.currentPosition,
+									closest.goalAngleX,
+									closest.startAngleX,
+									closest.goalAngleY,
+									closest.startAngleY
+								)
+								a[4] = CFrame.new(a[4].p, pred)
+								return nbd_bypass(self, unpack(a))
+							end
+						end
+					elseif a[1] == 1 and dev_optix.script_settings.destroy_replication and not accessing then
+						a[3] = 0.721933
+						a[4] = 1e99
+					elseif a[1] == 16 and dev_optix.script_settings.destroy_replication and not touchenabled then
+						local act = a[3]
+						local press = function(...)
+							accessing = true
+							task.wait(...)
+							keypress(0x45)
+							keyrelease(0x45)
+							task.wait(...)
+							accessing = false
+						end
+						local combo = function()
+							accessing = true
+							task.wait(0.01)
+							keypress(0x45)
+							keypress(0x01)
+							wait(0.001)
+							keyrelease(0x45)
+							keyrelease(0x01)
+							task.wait(0.01)
+							accessing = false
+						end
+						if act == "Pickup" then
+							combo()
+						elseif act == "Access" or act == "Craft" or act == "Use" or act == "Name" then
+							press(0.01)
+						elseif act == "Open" then
+							press(0.0001)
+						end
+					end
+					return spooed_hitbox(self, unpack(a))
+				end)
+			)
+			--
+			local lastTime = 0
+			--
+			dev_optix.R_S.Heartbeat:Connect(LPH_NO_VIRTUALIZE(function()
+				if tick() - lastTime >= 1 and dev_optix.script_settings.silentwalk then
+					game:GetService("Players").LocalPlayer.RemoteEvent:FireServer(2, true)
+					lastTime = tick()
+				end
+			end))
+			--
+			local lp = game:GetService("Players").LocalPlayer
+			local char = dev_optix.work_space.Ignore.LocalCharacter.Middle
+			local players = debug.getupvalue(dev_optix.custom_modules.Player3.GetPlayerModel, 1)
+			local badNum = function(n)
+				return typeof(n) ~= "number"
+					or math.abs(n) == math.huge
+					or n ~= n
+					or math.abs(n) > 9e8
+					or math.abs(n) == 1e99
+			end
+			local badVec = function(v)
+				return typeof(v) ~= "Vector3" or badNum(v.X) or badNum(v.Y) or badNum(v.Z) or v.Magnitude > 1e6
+			end
+			task.spawn(function()
+				while task.wait(1.5) do
+					local pos = (char and char.Position) or Vector3.zero
+					for i, v in pairs(players) do
+						if v and v.model and dev_optix.script_settings.Resolver then
+							local p = v.model:GetPivot().Position
+							local weird
+							if badNum(v.goalAngleY) then
+								v.goalAngleY = 0
+								weird = true
+							end
+							if badNum(v.startAngleY) then
+								v.startAngleY = 0
+								weird = true
+							end
+							if badVec(v.currentPosition) then
+								v.currentPosition = Vector3.zero
+								weird = true
+							end
+							if badVec(v.startPosition) then
+								v.startPosition = Vector3.zero
+								weird = true
+							end
+							if badVec(v.goalPosition) then
+								v.goalPosition = Vector3.zero
+								weird = true
+							end
+							if getmetatable(v) ~= "Locked" then
+								local o = v
+								players[i] = setmetatable({}, {
+									__index = o,
+									__newindex = function(_, k, val)
+										if o.goalAngleX == 9 then
+											o[k] = val
+										elseif (k == "goalAngleY" or k == "startAngleY") and badNum(val) then
+											o[k] = 0
+										elseif (k == "goalAngleX" or k == "startAngleX") and badNum(val) then
+											o[k] = 0
+										elseif
+											(k == "goalPosition" or k == "startPosition" or k == "currentPosition")
+											and badVec(val)
+										then
+											o[k] = Vector3.zero
+										else
+											o[k] = val
+										end
+									end,
+									__metatable = "Locked",
+								})
+							end
+						end
+					end
+				end
+			end)
+			--
+			local Mouse, MagicDestroy, EntityClient, ValidTypes =
+				game:GetService("Players").LocalPlayer:GetMouse(),
+				true,
+				dev_optix.custom_modules.Player4.List,
+				{ Foundation = true, DoubleDoor = true, Wall = true, TriangleFoundation = true }
+			dev_optix.user_input.InputBegan:Connect(function(x, f)
+				if f or x.UserInputType ~= Enum.UserInputType.MouseButton2 then
+					return
+				end
+				local target = Mouse.Target
+				if not target or not target:IsDescendantOf(dev_optix.work_space) then
+					return
+				end
+				local EntityData = dev_optix.custom_modules.Player4.GetEntityDataFromPart(target)
+				if
+					EntityData
+					and MagicDestroy
+					and ValidTypes[EntityData.typ]
+					and dev_optix.script_settings.MagicDestroy
+				then
+					local canDestroy = true
+					for _, v in pairs(EntityClient) do
+						if v.typ == "ClaimTotem" then
+							local distance = (EntityData.pos - v.pos).Magnitude
+							if distance <= 15 then
+								warn(
+									"Cannot magic destroy "
+										.. EntityData.typ
+										.. " "
+										.. EntityData.id
+										.. " because it is too close to a ClaimTotem!"
+								)
+								canDestroy = false
+								break
+							end
+						end
+					end
+					if canDestroy then
+						game:GetService("Players").LocalPlayer.RemoteEvent:FireServer(10, "Destroy", EntityData.id)
+					end
+				end
+			end)
+			--
+			local invismods = Tabs.misc:createGroup("right", "special_mods")
+			--
+			invismods
+				:addToggle({
+					text = "invisible_toggle",
+					default = true,
+					flag = "invisible_toggle",
+					callback = function(state)
+						dev_optix.script_settings.invistoggle = state
+					end,
+				})
+				:addKeybind({
+					text = "invisible_bind",
+					type = "toggle",
+					key = Enum.KeyCode.Q,
+					flag = "invisible_bind",
+					callback = function(state)
+						if dev_optix.script_settings.invistoggle then
+							dev_optix.script_settings.destroy_replication =
+								not dev_optix.script_settings.destroy_replication
+							InvisibleText.Visible = dev_optix.script_settings.destroy_replication
+						end
+					end,
+				})
+			--
+			invismods:addToggle({
+				text = "invis_resolver",
+				default = false,
+				flag = "invis_resolver",
+				callback = function(state)
+					dev_optix.script_settings.Resolver = state
+				end,
+			})
+			--
+			invismods:addToggle({
+				text = "dink_hitsound",
+				default = false,
+				flag = "dink_hitsound",
+				callback = function(state)
+					dev_optix.script_settings.DinkHitSound = state
+				end,
+			})
+			--
+			local HBE = Tabs.main:createGroup("left", "hitbox_expander")
+			local hitboxEnabled, width, height, collide, transparency = false, 25, 25, false, 0.5
+			local CacheTorso, OldTarget = {}, nil
+			game:GetService("RunService")
+				:BindToRenderStep("HitboxUpdate", Enum.RenderPriority.Character.Value, function()
+					if not hitboxEnabled then
+						return
+					end
+					local cur = dev_optix.silent_target
+					local torso = cur and cur.model and cur.model:FindFirstChild("Torso")
+					if OldTarget and OldTarget ~= cur then
+						local oldTorso = OldTarget.model and OldTarget.model:FindFirstChild("Torso")
+						if oldTorso then
+							local c = CacheTorso[oldTorso]
+							if c then
+								oldTorso.Size, oldTorso.CanCollide, oldTorso.Transparency = c[1], c[2], c[3]
+								CacheTorso[oldTorso] = nil
+							end
+						end
+						OldTarget = nil
+					end
+					if torso and not cur.sleeping then
+						if not CacheTorso[torso] then
+							CacheTorso[torso] = { torso.Size, torso.CanCollide, torso.Transparency }
+						end
+						torso.Size, torso.CanCollide, torso.Transparency =
+							Vector3.new(width, height, width), collide, transparency
+						OldTarget = cur
+					end
+				end)
+			--
+			HBE:addToggle({
+				text = "hitbox_enabled",
+				default = false,
+				flag = "hitbox_enabled",
+				callback = function(state)
+					hitboxEnabled = state
+				end,
+			})
+			--
+			HBE:addToggle({
+				text = "hitbox_cancollide",
+				default = false,
+				flag = "hitbox_cancollide",
+				callback = function(state)
+					collide = state
+				end,
+			})
+			--
+			HBE:addToggle({
+				text = "force_head",
+				default = false,
+				flag = "force_head",
+				callback = function(state)
+					dev_optix.script_settings.HbOverider = state
+				end,
+			})
+			--
+			HBE:addToggle({
+				text = "size_bypass",
+				default = false,
+				flag = "size_bypass",
+				callback = function(state)
+					getgenv().Hb_Bypass = state
+				end,
+			})
+			--
+			HBE:addSlider({
+				text = "hitbox_width",
+				min = 1,
+				max = 8000,
+				suffix = "%",
+				float = 1,
+				default = 1,
+				flag = "hitbox_width",
+				callback = function(Value)
+					width = Value
+				end,
+			})
+			--
+			HBE:addSlider({
+				text = "hitbox_height",
+				min = 1,
+				max = 30,
+				suffix = "%",
+				float = 1,
+				default = 1,
+				flag = "hitbox_height",
+				callback = function(Value)
+					height = Value
+				end,
+			})
+			--
+			HBE:addSlider({
+				text = "hitbox_transparency",
+				min = 0,
+				max = 1,
+				suffix = "%",
+				float = 0.1,
+				default = 0.5,
+				flag = "hitbox_transparency",
+				callback = function(Value)
+					transparency = Value
+				end,
+			})
+			--
+			local backpacks = {}
+			local claim_totems = {}
+			local dropped_items = {}
+			local iron_ores = {}
+			local stone_ores = {}
+			local nitrate_ores = {}
+			local function update()
+				local active_backpacks = {}
+				local active_totems = {}
+				local active_drops = {}
+				local active_iron = {}
+				local active_stone = {}
+				local active_nitrate = {}
+				for _, v in pairs(dev_optix.custom_modules.Player4.List) do
+					if
+						v.typ == "Backpack"
+						and v.model
+						and v.model:FindFirstChild("Part")
+						and dev_optix.script_settings.BackPackEsp
+					then
+						active_backpacks[v.id] = true
+						if not backpacks[v.id] then
+							backpacks[v.id] = dev_optix:custom_create(
+								"Text",
+								{
+									Text = "[BODY BAG]",
+									Size = 13,
+									Color = Color3.fromRGB(100, 200, 200),
+									Center = true,
+									Outline = true,
+									Font = 2,
+									Visible = false,
+								}
+							)
+						end
+						local dist =
+							math.floor((dev_optix.custom_cam.CFrame.Position - v.model.Part.Position).Magnitude)
+						local pos, on_screen = dev_optix.custom_cam:WorldToViewportPoint(v.model.Part.Position)
+						backpacks[v.id].Text = "Body Bag [" .. dist .. "]"
+						backpacks[v.id].Position = Vector2.new(pos.X, pos.Y)
+						backpacks[v.id].Visible = on_screen
+					elseif
+						v.typ == "ClaimTotem"
+						and v.model
+						and v.model:FindFirstChild("Part")
+						and dev_optix.script_settings.ClaimTotemEsp
+					then
+						active_totems[v.id] = true
+						if not claim_totems[v.id] then
+							claim_totems[v.id] = dev_optix:custom_create(
+								"Text",
+								{
+									Text = "[CLAIM TOTEM]",
+									Size = 13,
+									Color = Color3.fromRGB(230, 220, 200),
+									Center = true,
+									Outline = true,
+									Font = 2,
+									Visible = false,
+								}
+							)
+						end
+						local dist =
+							math.floor((dev_optix.custom_cam.CFrame.Position - v.model.Part.Position).Magnitude)
+						local pos, on_screen = dev_optix.custom_cam:WorldToViewportPoint(v.model.Part.Position)
+						claim_totems[v.id].Text = "Claim Totem [" .. dist .. "]"
+						claim_totems[v.id].Position = Vector2.new(pos.X, pos.Y)
+						claim_totems[v.id].Visible = on_screen
+					elseif
+						v.typ == "DroppedItem"
+						and v.model
+						and v.model:FindFirstChild("Part")
+						and dev_optix.script_settings.DroppedItemEsp
+					then
+						active_drops[v.id] = true
+						if not dropped_items[v.id] then
+							dropped_items[v.id] = dev_optix:custom_create(
+								"Text",
+								{
+									Text = "[DROPPED ITEM]",
+									Size = 13,
+									Color = Color3.fromRGB(200, 160, 255),
+									Center = true,
+									Outline = true,
+									Font = 2,
+									Visible = false,
+								}
+							)
+						end
+						local dist =
+							math.floor((dev_optix.custom_cam.CFrame.Position - v.model.Part.Position).Magnitude)
+						local pos, on_screen = dev_optix.custom_cam:WorldToViewportPoint(v.model.Part.Position)
+						dropped_items[v.id].Text = "Dropped Item [" .. dist .. "]"
+						dropped_items[v.id].Position = Vector2.new(pos.X, pos.Y)
+						dropped_items[v.id].Visible = on_screen
+					elseif
+						v.typ == "IronOre"
+						and v.model
+						and v.model:FindFirstChild("Part")
+						and dev_optix.script_settings.IronOreEsp
+					then
+						active_iron[v.id] = true
+						if not iron_ores[v.id] then
+							iron_ores[v.id] = dev_optix:custom_create(
+								"Text",
+								{
+									Text = "[IRON ORE]",
+									Size = 13,
+									Color = Color3.fromRGB(255, 140, 60),
+									Center = true,
+									Outline = true,
+									Font = 2,
+									Visible = false,
+								}
+							)
+						end
+						local dist =
+							math.floor((dev_optix.custom_cam.CFrame.Position - v.model.Part.Position).Magnitude)
+						local pos, on_screen = dev_optix.custom_cam:WorldToViewportPoint(v.model.Part.Position)
+						iron_ores[v.id].Text = "Iron Ore [" .. dist .. "]"
+						iron_ores[v.id].Position = Vector2.new(pos.X, pos.Y)
+						iron_ores[v.id].Visible = on_screen
+					elseif
+						v.typ == "StoneOre"
+						and v.model
+						and v.model:FindFirstChild("Part")
+						and dev_optix.script_settings.StoneOreEsp
+					then
+						active_stone[v.id] = true
+						if not stone_ores[v.id] then
+							stone_ores[v.id] = dev_optix:custom_create(
+								"Text",
+								{
+									Text = "[STONE ORE]",
+									Size = 13,
+									Color = Color3.fromRGB(180, 180, 180),
+									Center = true,
+									Outline = true,
+									Font = 2,
+									Visible = false,
+								}
+							)
+						end
+						local dist =
+							math.floor((dev_optix.custom_cam.CFrame.Position - v.model.Part.Position).Magnitude)
+						local pos, on_screen = dev_optix.custom_cam:WorldToViewportPoint(v.model.Part.Position)
+						stone_ores[v.id].Text = "Stone Ore [" .. dist .. "]"
+						stone_ores[v.id].Position = Vector2.new(pos.X, pos.Y)
+						stone_ores[v.id].Visible = on_screen
+					elseif
+						v.typ == "NitrateOre"
+						and v.model
+						and v.model:FindFirstChild("Part")
+						and dev_optix.script_settings.NitrateOreEsp
+					then
+						active_nitrate[v.id] = true
+						if not nitrate_ores[v.id] then
+							nitrate_ores[v.id] = dev_optix:custom_create(
+								"Text",
+								{
+									Text = "[NITRATE ORE]",
+									Size = 13,
+									Color = Color3.fromRGB(220, 240, 255),
+									Center = true,
+									Outline = true,
+									Font = 2,
+									Visible = false,
+								}
+							)
+						end
+						local dist =
+							math.floor((dev_optix.custom_cam.CFrame.Position - v.model.Part.Position).Magnitude)
+						local pos, on_screen = dev_optix.custom_cam:WorldToViewportPoint(v.model.Part.Position)
+						nitrate_ores[v.id].Text = "Nitrate Ore [" .. dist .. "]"
+						nitrate_ores[v.id].Position = Vector2.new(pos.X, pos.Y)
+						nitrate_ores[v.id].Visible = on_screen
+					end
+				end
+				for id, o in pairs(backpacks) do
+					if not active_backpacks[id] then
+						o:Remove()
+						backpacks[id] = nil
+					end
+				end
+				for id, o in pairs(claim_totems) do
+					if not active_totems[id] then
+						o:Remove()
+						claim_totems[id] = nil
+					end
+				end
+				for id, o in pairs(dropped_items) do
+					if not active_drops[id] then
+						o:Remove()
+						dropped_items[id] = nil
+					end
+				end
+				for id, o in pairs(iron_ores) do
+					if not active_iron[id] then
+						o:Remove()
+						iron_ores[id] = nil
+					end
+				end
+				for id, o in pairs(stone_ores) do
+					if not active_stone[id] then
+						o:Remove()
+						stone_ores[id] = nil
+					end
+				end
+				for id, o in pairs(nitrate_ores) do
+					if not active_nitrate[id] then
+						o:Remove()
+						nitrate_ores[id] = nil
+					end
+				end
+			end
+			--
+			game:GetService("RunService").RenderStepped:Connect(LPH_NO_VIRTUALIZE(function()
+				update()
+			end))
+			--
+			dev_optix.work_space.ChildAdded:Connect(LPH_NO_VIRTUALIZE(function()
+				update()
+			end))
+			--
+			dev_optix.custom_modules.Character.jump_shoot = function()
+				if dev_optix.script_settings.jump_shoot then
+					return true
+				else
+					return dev_optix.custom_modules.Character.IsGrounded()
+				end
+			end
+			--
+			dev_optix.custom_modules.Character.always_sprint = function(bool)
+				if dev_optix.script_settings.always_sprint then
+					return dev_optix.custom_modules.Character.SetSprintBlocked(false)
+				else
+					return dev_optix.custom_modules.Character.SetSprintBlocked(bool)
+				end
+			end
+			--
+			dev_optix.custom_modules.Network.send_tcp = function(...)
+				local args = { ... }
+				return dev_optix.custom_modules.Network.Send(table.unpack(args))
+			end
+			--
+			for _, v in pairs(getgc(true)) do
+				if typeof(v) == "function" and islclosure(v) then
+					local src, name = debug.info(v, "s"), debug.info(v, "n")
+					if src then
+						if name == "update" then
+							if src:find("RangedWeapon") then
+								debug.setconstant(v, 14, "jump_shoot")
+								debug.setconstant(v, 13, "always_sprint")
+							elseif src:find("BowSpecial") then
+								debug.setconstant(v, 19, "jump_shoot")
+								debug.setconstant(v, 20, "always_sprint")
+							elseif src:find("Melee") then
+								debug.setconstant(v, 14, "jump_shoot")
+								debug.setconstant(v, 25, "always_sprint")
+							end
+						elseif name == "createProjectile" and (src:find("RangedWeapon") or src:find("BowSpecial")) then
+							debug.setconstant(v, 15, "send_tcp")
+						elseif name == "fire" then
+							if src:find("RangedWeapon") then
+								debug.setconstant(v, 27, "silent_aim")
+							elseif src:find("BowSpecial") then
+								debug.setconstant(v, 21, "silent_aim")
+							end
+						elseif name == "cameraRecoil" then
+							debug.setconstant(v, 2, "PC")
+						end
+					end
+				end
+			end
+			--[[
+        local weap_mods = Tabs.combat:createGroup('left', 'weapon_mods')
+        local weap_mods2 = Tabs.combat:createGroup('right', 'weapon_mods')
+        --
+        weap_mods:addToggle({text = "weapon_recoil",default = false,flag = "weapon_recoil",callback = function(state)
+            dev_optix.weapon_recoil = state
+        end})
+        --
+        weap_mods:addToggle({text = "weapon_spread",default = false,flag = "weapon_spread",callback = function(state)
+            dev_optix.weapon_spread = state
+        end})
+        --
+        weap_mods:addToggle({text = "weapon_reload",default = false,flag = "weapon_reload",callback = function(state)
+            dev_optix.weapon_reload = state
+        end})
+        --
+        weap_mods2:addToggle({text = "weapon_cooldown",default = false,flag = "weapon_cooldown",callback = function(state)
+            dev_optix.weapon_cooldown = state
+        end})
+        --
+        weap_mods:addToggle({text = "weapon_equip_speed",default = false,flag = "weapon_equip_speed",callback = function(state)
+            dev_optix.weapon_equip = state
+        end})
+        --
+        weap_mods:addToggle({text = "weapon_firetype",default = false,flag = "weapon_autofire",callback = function(state)
+            dev_optix.weapon_autofire = state
+        end})
+        --
+        weap_mods:addToggle({text = "bow_pull",default = false,flag = "bow_pull",callback = function(state)
+            dev_optix.bow_pull = state
+        end})
+        --
+        weap_mods:addToggle({text = "bow_aimspeed",default = false,flag = "bow_aimspeed",callback = function(state)
+            dev_optix.bow_aimspeed = state
+        end})
+        --
+        weap_mods:addSlider({text = "recoil_x", min = 0, max = 100, suffix = "%", float = 1, default = 0, flag = "recoil_x",callback = function(Value)
+            dev_optix.recoil_x = Value
+        end})
+        --
+        weap_mods:addSlider({text = "recoil_y", min = 0, max = 100, suffix = "%", float = 1, default = 0, flag = "recoil_y",callback = function(Value)
+            dev_optix.recoil_y = Value
+        end})
+        --
+        weap_mods:addSlider({text = "spread_amt", min = 0, max = 100, suffix = "%", float = 1, default = 0, flag = "spread_amt",callback = function(Value)
+            dev_optix.spread_amt = Value
+        end})
+        --
+        weap_mods:addSlider({text = "reload_time", min = 0.1, max = 3, suffix = "%", float = 1, default = 0, flag = "reload_time",callback = function(Value)
+            dev_optix.reload_time = Value
+        end})
+        --
+        weap_mods2:addSlider({text = "cooldown_time", min = 0, max = 1, suffix = "%", float = 0.1, default = 0.5, flag = "cooldown_time",callback = function(Value)
+            dev_optix.cooldown_time = Value
+        end})
+        --
+        weap_mods:addSlider({text = "set_bow_pulltime", min = 0, max = 1, suffix = "%", float = 0.1, default = 0.5, flag = "bow_pulltime",callback = function(Value)
+            dev_optix.bow_pulltime = Value
+        end})
+
+        weap_mods:addSlider({text = "set_bow_aimspeed", min = 0, max = 1, suffix = "%", float = 0.1, default = 0.75, flag = "bow_aimspeed_set",callback = function(Value)
+            dev_optix.bow_aimspd = Value
+        end})
+        --
+        weap_mods:addSlider({text = "equiptime_speed", min = 0, max = 1, suffix = "%", float = 0.1, default = 0.75, flag = "equiptime_speed",callback = function(Value)
+            dev_optix.equiptime = Value
+        end})
+        --
+        weap_mods2:addList({text = "fire_type:",multiselect = false,values = {"semi", "auto"},flag = "fire_mode_seleected",callback = function(fire_mode_seleected)
+            if dev_optix.weapon_autofire then
+                dev_optix.fire_mode = fire_mode_seleected
+            end
+        end})
+        --]]
+			--
+			local Cmods = Tabs.misc:createGroup("left", "character_mods")
+			--
+			Cmods:addToggle({
+				text = "jump_shoot",
+				default = false,
+				flag = "jump_shoot",
+				callback = function(state)
+					dev_optix.script_settings.jump_shoot = state
+				end,
+			})
+			--
+			Cmods:addToggle({
+				text = "always_sprint",
+				default = false,
+				flag = "always_sprint",
+				callback = function(state)
+					dev_optix.script_settings.always_sprint = state
+				end,
+			})
+			--
+			Cmods:addToggle({
+				text = "silent_walk",
+				default = false,
+				flag = "silent_walk",
+				callback = function(state)
+					dev_optix.script_settings.silentwalk = state
+				end,
+			})
+			--
+			local dev_optixesp = Tabs.entity:createGroup("left", "world_esp")
+			local custoom_entity = Tabs.entity:createGroup("right", "custom_stuff")
+			dev_optixesp:addToggle({
+				text = "backpack_esp",
+				default = false,
+				flag = "Back_Pack_Esp",
+				callback = function(state)
+					dev_optix.script_settings.BackPackEsp = state
+				end,
+			})
+			dev_optixesp:addToggle({
+				text = "claimtotem_esp",
+				default = false,
+				flag = "Claim_Totem_Esp",
+				callback = function(state)
+					dev_optix.script_settings.ClaimTotemEsp = state
+				end,
+			})
+			dev_optixesp:addToggle({
+				text = "droppeditem_esp",
+				default = false,
+				flag = "Dropped_Item_Esp",
+				callback = function(state)
+					dev_optix.script_settings.DroppedItemEsp = state
+				end,
+			})
+			dev_optixesp:addToggle({
+				text = "stone_ore",
+				default = false,
+				flag = "stone_ore",
+				callback = function(state)
+					dev_optix.script_settings.StoneOreEsp = state
+				end,
+			})
+			dev_optixesp:addToggle({
+				text = "iron_ore",
+				default = false,
+				flag = "iron_ore",
+				callback = function(state)
+					dev_optix.script_settings.IronOreEsp = state
+				end,
+			})
+			dev_optixesp:addToggle({
+				text = "nitrate_ore",
+				default = false,
+				flag = "nitrate_ore",
+				callback = function(state)
+					dev_optix.script_settings.NitrateOreEsp = state
+				end,
+			})
+			custoom_entity:addToggle({
+				text = "magic_destroy",
+				default = false,
+				flag = "magic_destroy",
+				callback = function(state)
+					dev_optix.script_settings.MagicDestroy = state
+				end,
+			})
+			--
+		end
+		--
+	end
+	--
+	--> Player dev_optix // Esp <--
+	dev_optix.Optix_esp = {}
+	dev_optix.Optix_esp.esp = {
+		esp_enabled = false,
+		corner_box = false,
+		names_check = false,
+		weapon_check = false,
+		health_bar = false,
+		sleep_check = false,
+		max_dist = 1500,
+		box_type = "corner",
+		showtarget = false,
+		bag = false,
+		targetcolor = Color3.fromRGB(255, 0, 0),
+		team_check = false,
+		rapist = true,
+		show_invis = false,
+		rain_bow = false,
+	}
+	--
+	local Cache2 = {}
+	local Cache = {}
+	local Invis = {}
+	local HealthList = {}
+	--
+	local ws = cloneref(game:GetService("Workspace"))
+	local camera = ws.CurrentCamera
+	local CoreGui = cloneref(game:GetService("CoreGui"))
+	--
+	local playerlist = debug.getupvalue(dev_optix.custom_modules.Player3.GetPlayerModel, 1)
+	if not playerlist then
+		error("playerlist function not found.")
+	end
+	--
+	function dev_optix:IsTeammate(Player)
+		if Player.Head.Teamtag.tag.Text ~= "Shylou2644" then
+			return true
+		end
+		return false
+	end
+	--
+	local CreateClass = function(Class, Properties)
+		local ClassInt = typeof(Class) == "string" and Instance.new(Class) or Class
+		--
+		for Property, Value in next, Properties do
+			ClassInt[Property] = Value
+		end
+		--
+		return ClassInt
+	end
+	--
+	do -- ESP
+		local ESPHolder = CreateClass("ScreenGui", {
+			Parent = CoreGui,
+			Name = "ESPHolder",
+		})
+
+		function dev_optix:DistanceCheck(Player)
+			return math.floor((Player.Position - camera.CFrame.Position).Magnitude)
+		end
+		--
+		local function Calc(distance)
+			local maxBarWidth = 4
+			local minBarWidth = 1
+			local distanceThreshold = 200
+			--
+			if distance > distanceThreshold then
+				return minBarWidth
+			else
+				local scaleFactor = (distanceThreshold - distance) / distanceThreshold
+				return maxBarWidth * scaleFactor + minBarWidth
+			end
+		end
+		--
+		function dev_optix:UpdateESP(PlayerTable)
+			if not PlayerTable then
+				return
+			end
+			local plr = PlayerTable.model
+			local model = PlayerTable.model
+			local humanoidRootPart = model:FindFirstChild("HumanoidRootPart")
+			if not humanoidRootPart then
+				return
+			end
+			--
+			HealthList[PlayerTable.id] = 100
+			--
+			local MainFrame = CreateClass("Frame", { Parent = ESPHolder, Name = plr.Name })
+			local MainFrameOutline = CreateClass("UIStroke", { Parent = MainFrame, Name = "MainFrameStroke" })
+			local OutlineFrame = CreateClass(
+				"Frame",
+				{ Parent = MainFrame, Name = plr.Name, Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1 }
+			)
+			local MainFrameOutline2 = CreateClass("UIStroke", { Parent = OutlineFrame, Name = "MainFrameStroke" })
+			local NameLabel = CreateClass(
+				"TextLabel",
+				{
+					Parent = ESPHolder,
+					Name = "Name",
+					BackgroundTransparency = 1,
+					Size = UDim2.new(0, 100, 0, 20),
+					Font = Enum.Font.Code,
+					AnchorPoint = Vector2.new(0.5, 0.5),
+					Position = UDim2.new(0.5, 0, 0, -11),
+					TextSize = 11,
+					TextColor3 = Color3.fromRGB(255, 255, 255),
+					TextStrokeTransparency = 0,
+					TextStrokeColor3 = Color3.new(0, 0, 0),
+					RichText = true,
+				}
+			)
+			local WeaponLabel = CreateClass(
+				"TextLabel",
+				{
+					Parent = ESPHolder,
+					Name = "Weapon",
+					BackgroundTransparency = 1,
+					Size = UDim2.new(0, 100, 0, 20),
+					Font = Enum.Font.Code,
+					AnchorPoint = Vector2.new(0.5, 0.5),
+					Position = UDim2.new(0.5, 0, 1, 0),
+					TextSize = 11,
+					TextColor3 = Color3.fromRGB(255, 255, 255),
+					TextStrokeTransparency = 0,
+					TextStrokeColor3 = Color3.new(0, 0, 0),
+					RichText = true,
+				}
+			)
+			--
+			local LeftTop = CreateClass(
+				"Frame",
+				{
+					Name = "LeftTop",
+					ZIndex = 1,
+					Parent = ESPHolder,
+					BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+					Position = UDim2.new(0, 0, 0, 0),
+				}
+			)
+			local LeftSide = CreateClass(
+				"Frame",
+				{
+					Name = "LeftSide",
+					ZIndex = 0,
+					Parent = ESPHolder,
+					BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+					Position = UDim2.new(0, 0, 0, 0),
+				}
+			)
+			local RightTop = CreateClass(
+				"Frame",
+				{
+					Name = "RightTop",
+					ZIndex = 1,
+					Parent = ESPHolder,
+					BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+					Position = UDim2.new(0, 0, 0, 0),
+				}
+			)
+			local RightSide = CreateClass(
+				"Frame",
+				{
+					Name = "RightSide",
+					ZIndex = 0,
+					Parent = ESPHolder,
+					BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+					Position = UDim2.new(0, 0, 0, 0),
+				}
+			)
+			local BottomSide = CreateClass(
+				"Frame",
+				{
+					Name = "BottomSide",
+					ZIndex = 1,
+					Parent = ESPHolder,
+					BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+					Position = UDim2.new(0, 0, 0, 0),
+				}
+			)
+			local BottomDown = CreateClass(
+				"Frame",
+				{
+					Name = "BottomDown",
+					ZIndex = 0,
+					Parent = ESPHolder,
+					BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+					Position = UDim2.new(0, 0, 0, 0),
+				}
+			)
+			local BottomRightSide = CreateClass(
+				"Frame",
+				{
+					Name = "BottomRightSide",
+					ZIndex = 1,
+					Parent = ESPHolder,
+					BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+					Position = UDim2.new(0, 0, 0, 0),
+				}
+			)
+			local BottomRightDown = CreateClass(
+				"Frame",
+				{
+					Name = "BottomRightDown",
+					ZIndex = 0,
+					Parent = ESPHolder,
+					BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+					Position = UDim2.new(0, 0, 0, 0),
+				}
+			)
+			--
+			local Frame1 = CreateClass(
+				"Frame",
+				{
+					Parent = BottomRightDown,
+					Size = UDim2.new(1, 0, 1, 0),
+					BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+					BorderSizePixel = 0,
+				}
+			)
+			local Frame2 = CreateClass(
+				"Frame",
+				{
+					Parent = RightSide,
+					Size = UDim2.new(1, 0, 1, 0),
+					BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+					BorderSizePixel = 0,
+				}
+			)
+			local Frame3 = CreateClass(
+				"Frame",
+				{
+					Parent = LeftSide,
+					Size = UDim2.new(1, 0, 1, 0),
+					BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+					BorderSizePixel = 0,
+				}
+			)
+			local Frame4 = CreateClass(
+				"Frame",
+				{
+					Parent = BottomDown,
+					Size = UDim2.new(1, 0, 1, 0),
+					BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+					BorderSizePixel = 0,
+				}
+			)
+			--
+			local Healthbar = CreateClass(
+				"Frame",
+				{ Parent = ESPHolder, BackgroundColor3 = Color3.fromRGB(0, 255, 0), BackgroundTransparency = 0 }
+			)
+			--
+			local ColorESP = function(Color)
+				LeftTop.BackgroundColor3 = Color
+				LeftSide.BackgroundColor3 = Color
+				RightTop.BackgroundColor3 = Color
+				RightSide.BackgroundColor3 = Color
+				BottomSide.BackgroundColor3 = Color
+				BottomDown.BackgroundColor3 = Color
+				BottomRightSide.BackgroundColor3 = Color
+				BottomRightDown.BackgroundColor3 = Color
+				--
+				NameLabel.TextColor3 = Color
+				WeaponLabel.TextColor3 = Color
+				--
+				Frame1.BackgroundColor3 = Color
+				Frame2.BackgroundColor3 = Color
+				Frame3.BackgroundColor3 = Color
+				Frame4.BackgroundColor3 = Color
+			end
+			local HideESP = function()
+				MainFrame.Visible = false
+				NameLabel.Visible = false
+				WeaponLabel.Visible = false
+				--
+				Healthbar.Visible = false
+				--
+				LeftTop.Visible = false
+				LeftSide.Visible = false
+				RightTop.Visible = false
+				RightSide.Visible = false
+				BottomSide.Visible = false
+				BottomDown.Visible = false
+				BottomRightSide.Visible = false
+				BottomRightDown.Visible = false
+			end
+			--
+			local Connection
+			Connection = game:GetService("RunService").Heartbeat:Connect(LPH_NO_VIRTUALIZE(function()
+				if plr and plr:FindFirstChild("HumanoidRootPart") then
+					if dev_optix.Optix_esp.esp.show_invis then
+						if PlayerTable.goalAngleY == 0 then
+							PlayerTable.goalAngleY = math.random(-1.5, 1.5)
+							PlayerTable.startAngleY = math.random(-1.5, 1.5)
+						end
+					end
+					--
+					local Pos, OnScreen = camera:WorldToScreenPoint(plr.HumanoidRootPart.Position)
+					local scaleFactor = 15
+						/ (Pos.Z * math.tan(math.rad(workspace.CurrentCamera.FieldOfView * 0.5)) * 2)
+						* 100
+					local Dist = dev_optix:DistanceCheck(plr.HumanoidRootPart)
+					local w, h = 2.4 * scaleFactor, 3.79 * scaleFactor
+					local h2 = 3.9 * scaleFactor
+					local distance = math.floor((camera.CFrame.Position - humanoidRootPart.Position).magnitude)
+					local HealthWidth = Calc(distance)
+					local IsCorner = dev_optix.Optix_esp.esp.box_type == "corner"
+					local Weapon = PlayerTable.equippedItem and PlayerTable.equippedItem.id or "Fist"
+					--
+					if OnScreen and dev_optix.Optix_esp.esp.esp_enabled then
+						--
+						if dev_optix.Optix_esp.esp.sleep_check and PlayerTable.sleeping then
+							HideESP()
+							return
+						end
+						--
+						ColorESP(
+							dev_optix.Optix_esp.esp.rain_bow and Color3.fromHSV(tick() % 5 / 5, 1, 1)
+								or (
+									dev_optix.Optix_esp.esp.team_check
+										and dev_optix:IsTeammate(plr)
+										and Color3.fromRGB(0, 255, 0)
+									or Color3.fromRGB(255, 255, 255)
+								)
+						)
+						--
+						--Checks
+						if dev_optix.Optix_esp.esp.corner_box then
+							if dev_optix.Optix_esp.esp.box_type == "corner" then
+								LeftTop.Visible = IsCorner
+								LeftTop.Position = UDim2.new(0, Pos.X - w / 2, 0, Pos.Y - h / 2.5)
+								LeftTop.Size = UDim2.new(0, w / 5, 0, 1)
+								LeftTop.BorderColor3 = Color3.fromRGB(0, 0, 0)
+								--
+								LeftSide.Visible = IsCorner
+								LeftSide.Position = UDim2.new(0, Pos.X - w / 2, 0, Pos.Y - h / 2.5)
+								LeftSide.Size = UDim2.new(0, 1, 0, h / 5)
+								LeftSide.BorderColor3 = Color3.fromRGB(0, 0, 0)
+								--
+								BottomSide.Visible = IsCorner
+								BottomSide.Position = UDim2.new(0, Pos.X - w / 2, 0, Pos.Y + h / 1.6) -- Bottom
+								BottomSide.Size = UDim2.new(0, 1, 0, h / 5)
+								BottomSide.AnchorPoint = Vector2.new(0, 5)
+								BottomSide.BorderColor3 = Color3.fromRGB(0, 0, 0)
+								--
+								BottomDown.Visible = IsCorner
+								BottomDown.Position = UDim2.new(0, Pos.X - w / 2, 0, Pos.Y + h / 1.6) -- Bottom
+								BottomDown.Size = UDim2.new(0, w / 5, 0, 1)
+								BottomDown.AnchorPoint = Vector2.new(0, 1)
+								BottomDown.BorderColor3 = Color3.fromRGB(0, 0, 0)
+								--
+								RightTop.Visible = IsCorner
+								RightTop.Position = UDim2.new(0, Pos.X + w / 2, 0, Pos.Y - h / 2.5)
+								RightTop.Size = UDim2.new(0, w / 5, 0, 1)
+								RightTop.AnchorPoint = Vector2.new(1, 0)
+								RightTop.BorderColor3 = Color3.fromRGB(0, 0, 0)
+								--
+								RightSide.Visible = IsCorner
+								RightSide.Position = UDim2.new(0, Pos.X + w / 2 - 1, 0, Pos.Y - h / 2.5)
+								RightSide.Size = UDim2.new(0, 1, 0, h / 5)
+								RightSide.AnchorPoint = Vector2.new(0, 0)
+								RightSide.BorderColor3 = Color3.fromRGB(0, 0, 0)
+								--
+								BottomRightSide.Visible = IsCorner
+								BottomRightSide.Position = UDim2.new(0, Pos.X + w / 2, 0, Pos.Y + h / 1.6) -- Bottom
+								BottomRightSide.Size = UDim2.new(0, 1, 0, h / 5)
+								BottomRightSide.AnchorPoint = Vector2.new(1, 1)
+								BottomRightSide.BorderColor3 = Color3.fromRGB(0, 0, 0)
+								--
+								BottomRightDown.Visible = IsCorner
+								BottomRightDown.Position = UDim2.new(0, Pos.X + w / 2, 0, Pos.Y + h / 1.6) -- Bottom
+								BottomRightDown.Size = UDim2.new(0, w / 5, 0, 1)
+								BottomRightDown.AnchorPoint = Vector2.new(1, 1)
+								BottomRightDown.BorderColor3 = Color3.fromRGB(0, 0, 0)
+							elseif dev_optix.Optix_esp.esp.box_type == "box" then
+								MainFrame.Position =
+									UDim2.new(0, Pos.X - 3 * scaleFactor / 2, 0, Pos.Y - 4.5 * scaleFactor / 2.25)
+								MainFrame.Size = UDim2.new(0, 3 * scaleFactor, 0, 4.5 * scaleFactor)
+								MainFrame.Visible = not IsCorner
+								MainFrame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+								MainFrame.BackgroundTransparency = 1
+								MainFrame.BorderSizePixel = 1
+								--
+								MainFrameOutline.Color = Color3.fromRGB(0, 0, 0)
+								MainFrameOutline.LineJoinMode = Enum.LineJoinMode.Miter
+								MainFrameOutline.Thickness = 2.25
+								MainFrameOutline2.Color = Color3.fromRGB(255, 255, 255)
+								MainFrameOutline2.LineJoinMode = Enum.LineJoinMode.Miter
+							end
+						else
+							MainFrame.Visible = false
+							LeftTop.Visible = false
+							LeftSide.Visible = false
+							RightTop.Visible = false
+							RightSide.Visible = false
+							BottomSide.Visible = false
+							BottomDown.Visible = false
+							BottomRightSide.Visible = false
+							BottomRightDown.Visible = false
+						end
+						if dev_optix.Optix_esp.esp.health_bar then
+							local health = 100 / 100
+							if HealthList[PlayerTable.id] then
+								health = HealthList[PlayerTable.id] / 100
+							end
+							health = math.clamp(health, 0, 100)
+							Healthbar.Visible = true
+							Healthbar.Position =
+								UDim2.new(0, LeftTop.Position.X.Offset - 8, 0, Pos.Y - h / 2.5 + h * (1 - health))
+							-- old Healthbar.Size = UDim2.new(0, 4, 0, h2 * health)
+							Healthbar.Size = UDim2.new(0, HealthWidth, 0, h2 * health)
+							Healthbar.BorderColor3 = Color3.fromRGB(0, 0, 0)
+						--
+						else
+							Healthbar.Visible = false
+						end
+						if dev_optix.Optix_esp.esp.names_check then
+							if plr.Head.Nametag.tag.Text ~= "" and plr.Head.Nametag.tag.Text ~= nil then
+								if plr.Head.Nametag.tag.Text ~= "Shylou2644" then
+									if Invis[PlayerTable.id] then
+										NameLabel.Text = " [" .. math.floor(Dist) .. "]-[Invisible]"
+									else
+										NameLabel.Text = plr.Head.Nametag.tag.Text .. " [" .. math.floor(Dist) .. "]"
+									end
+								end
+							else
+								if Invis[PlayerTable.id] then
+									NameLabel.Text = "[ " .. math.floor(Dist) .. "]-[Invisible]"
+								end
+								NameLabel.Text = " [" .. math.floor(Dist) .. "]"
+							end
+							--
+							NameLabel.Visible = true
+							NameLabel.Position = UDim2.new(0, Pos.X, 0, Pos.Y - 3 * scaleFactor / 2 - 7)
+						else
+							NameLabel.Visible = false
+						end
+						--
+						if dev_optix.Optix_esp.esp.weapon_check then
+							WeaponLabel.Text = Weapon
+							WeaponLabel.Position = UDim2.new(0, Pos.X, 0, Pos.Y + h / 1.62 + 7)
+							WeaponLabel.Visible = true
+						else
+							WeaponLabel.Visible = false
+						end
+						--
+						local IfColored = Frame1.BackgroundColor3 == dev_optix.Optix_esp.esp.targetcolor
+						if dev_optix.Optix_esp.esp.showtarget and not dev_optix:IsTeammate(plr) then
+							local Target = dev_optix.silent_target
+							if plr == Target then
+								if not IfColored then
+									ColorESP(dev_optix.Optix_esp.esp.targetcolor)
+								end
+							elseif IfColored then
+								ColorESP(Color3.fromRGB(255, 0, 0))
+							end
+						elseif IfColored then
+							ColorESP(Color3.fromRGB(255, 0, 0))
+						end
+					else
+						HideESP()
+					end
+				else
+					HideESP()
+				end
+				--
+				if not plr or not plr.Parent then
+					MainFrame:Destroy()
+					NameLabel:Destroy()
+					WeaponLabel:Destroy()
+					--
+					Healthbar:Destroy()
+					--
+					LeftTop:Destroy()
+					LeftSide:Destroy()
+					RightTop:Destroy()
+					RightSide:Destroy()
+					BottomSide:Destroy()
+					BottomDown:Destroy()
+					BottomRightSide:Destroy()
+					BottomRightDown:Destroy()
+					Connection:Disconnect()
+				end
+			end))
+		end
+		--
+		for i, v in pairs(playerlist) do
+			if v.model:FindFirstChild("HumanoidRootPart") and not table.find(Cache2, v) then
+				if not v.sleeping then
+					Cache[v.id] = v
+				end
+				table.insert(Cache2, v)
+				dev_optix:UpdateESP(v)
+			end
+		end
+		--
+		game:GetService("Workspace").ChildAdded:Connect(function()
+			task.delay(1.5, function()
+				for i, v in pairs(playerlist) do
+					if v.model:FindFirstChild("HumanoidRootPart") and not table.find(Cache2, v) then
+						if not v.sleeping then
+							Cache[v.id] = v
+						end
+						table.insert(Cache2, v)
+						dev_optix:UpdateESP(v)
+					end
+				end
+			end)
+		end)
+	end
+	--
+	local players_esp = Tabs.visuals:createGroup("left", "player_esp")
+	--
+	players_esp:addToggle({
+		text = "esp_enabled",
+		default = false,
+		flag = "esp_enabled",
+		callback = function(state)
+			dev_optix.Optix_esp.esp.esp_enabled = state
+		end,
+	})
+	--
+	players_esp:addToggle({
+		text = "corner_box",
+		default = false,
+		flag = "corner_box",
+		callback = function(state)
+			dev_optix.Optix_esp.esp.corner_box = state
+		end,
+	})
+	--
+	players_esp:addToggle({
+		text = "names_check",
+		default = false,
+		flag = "names_check",
+		callback = function(state)
+			dev_optix.Optix_esp.esp.names_check = state
+		end,
+	})
+	--
+	players_esp:addToggle({
+		text = "weapon_check",
+		default = false,
+		flag = "weapon_check",
+		callback = function(state)
+			dev_optix.Optix_esp.esp.weapon_check = state
+		end,
+	})
+	--
+	players_esp:addToggle({
+		text = "health_bar",
+		default = false,
+		flag = "health_bar",
+		callback = function(state)
+			dev_optix.Optix_esp.esp.health_bar = state
+		end,
+	})
+	--
+	players_esp:addToggle({
+		text = "sleeper_check",
+		default = false,
+		flag = "sleep_check",
+		callback = function(state)
+			dev_optix.Optix_esp.esp.sleep_check = state
+		end,
+	})
+	--
+	players_esp:addToggle({
+		text = "team_check",
+		default = false,
+		flag = "team_check",
+		callback = function(state)
+			dev_optix.Optix_esp.esp.team_check = state
+		end,
+	})
+	--
+	players_esp:addToggle({
+		text = "rain_bow",
+		default = false,
+		flag = "rain_bow",
+		callback = function(state)
+			dev_optix.Optix_esp.esp.rain_bow = state
+		end,
+	})
+	--
+	players_esp:addToggle({
+		text = "show_invis",
+		default = false,
+		flag = "show_invis",
+		callback = function(state)
+			dev_optix.Optix_esp.esp.show_invis = state
+		end,
+	})
+	--
+	players_esp:addSlider({
+		text = "max_dist",
+		min = 0,
+		max = 1500,
+		suffix = "%",
+		float = 1,
+		default = 0,
+		flag = "max_dist",
+		callback = function(Value)
+			dev_optix.Optix_esp.esp.max_dist = Value
+		end,
+	})
+	--
+	dev_optix.r_s = cloneref(game:GetService("RunService"))
+	dev_optix.w_s = cloneref(game:GetService("Workspace"))
+	dev_optix.char_parts = { "LeftUpperArm", "LeftLowerArm", "LeftHand", "RightUpperArm", "RightLowerArm", "RightHand" }
+	dev_optix.fps_arms = dev_optix.w_s:WaitForChild("Ignore"):WaitForChild("FPSArms")
+	dev_optix.custom_hue = 0
+	dev_optix.custom_speed = 0.2
+	dev_optix.arm_transparency = 0.7
+	dev_optix.custom_arms = false
+	--
+	function dev_optix:custom_arm()
+		if not dev_optix.custom_arms then
+			return
+		end
+		dev_optix.custom_hue = (dev_optix.custom_hue + dev_optix.r_s.Heartbeat:Wait() * dev_optix.custom_speed) % 1
+		dev_optix.col = Color3.fromHSV(dev_optix.custom_hue, 1, 1)
+		for _, part_name in ipairs(dev_optix.char_parts) do
+			dev_optix.part = dev_optix.fps_arms:FindFirstChild(part_name)
+			if dev_optix.part and dev_optix.part:IsA("BasePart") then
+				dev_optix.part.Color = dev_optix.col
+				dev_optix.part.Material = Enum.Material.ForceField
+				dev_optix.part.Transparency = dev_optix.arm_transparency
+			end
+		end
+	end
+	--
+	dev_optix.r_s.Heartbeat:Connect(LPH_NO_VIRTUALIZE(function()
+		dev_optix:custom_arm()
+	end))
+	--
+	local arm_visuals = Tabs.visuals:createGroup("right", "arm_visuals")
+	--
+	arm_visuals:addToggle({
+		text = "custom_arms",
+		default = false,
+		flag = "custom_arms",
+		callback = function(state)
+			dev_optix.custom_arms = state
+		end,
+	})
+	--
+	local Lighting = game:GetService("Lighting")
+	local DesiredColor, custom_ambient, FovEnabled, no_fog, no_shadows, no_colorshift =
+		Color3.fromRGB(255, 255, 255), false, false, false, false, false
+	local ambientFunc = {
+		TimeOfDay = Lighting.TimeOfDay,
+		Ambient = Lighting.Ambient,
+		GlobalShadows = Lighting.GlobalShadows,
+		ColorShift_Top = Lighting.ColorShift_Top,
+		ColorShift_Bottom = Lighting.ColorShift_Bottom,
+		FogEnd = Lighting.FogEnd,
+		FogStart = Lighting.FogStart,
+		FogColor = Lighting.FogColor,
+	}
+	local fovFunc = { FieldOfView = dev_optix.custom_cam.FieldOfView }
+	local SpoofedFov = 75
+	--
+	local spoofed_ambient2
+	spoofed_ambient2 = hookmetamethod(
+		game,
+		"__index",
+		newcclosure(function(self, key)
+			if checkcaller() then
+				return spoofed_ambient2(self, key)
+			end
+			if self == Lighting and ambientFunc[key] ~= nil then
+				return ambientFunc[key]
+			end
+			return spoofed_ambient2(self, key)
+		end)
+	)
+	--
+	local spoofed_ambient1
+	spoofed_ambient1 = hookmetamethod(
+		game,
+		"__newindex",
+		newcclosure(function(self, key, value)
+			if checkcaller() then
+				return spoofed_ambient1(self, key, value)
+			end
+			if self == Lighting and ambientFunc[key] ~= nil then
+				ambientFunc[key] = value
+				if key == "Ambient" then
+					return spoofed_ambient1(self, key, custom_ambient and DesiredColor or value)
+				elseif key == "GlobalShadows" then
+					return spoofed_ambient1(self, key, no_shadows and false or value)
+				elseif key == "ColorShift_Top" or key == "ColorShift_Bottom" then
+					return spoofed_ambient1(self, key, no_colorshift and Color3.new(0, 0, 0) or value)
+				elseif key == "FogStart" or key == "FogEnd" then
+					return spoofed_ambient1(self, key, no_fog and 1e6 or value)
+				end
+			end
+			return spoofed_ambient1(self, key, value)
+		end)
+	)
+	--
+	local Worlddev_optix = Tabs.world:createGroup("left", "world_visuals")
+	--
+	Worlddev_optix:addToggle({
+		text = "custom_ambient",
+		default = false,
+		flag = "custom_ambient",
+		callback = function(state)
+			custom_ambient = state
+		end,
+	})
+	--
+	Worlddev_optix:addToggle({
+		text = "no_fog",
+		default = false,
+		flag = "no_fog",
+		callback = function(state)
+			no_fog = state
+		end,
+	})
+	--
+	Worlddev_optix:addToggle({
+		text = "no_shadows",
+		default = false,
+		flag = "no_shadows",
+		callback = function(state)
+			no_shadows = state
+		end,
+	})
+	--
+	Worlddev_optix:addToggle({
+		text = "no_colorshift",
+		default = false,
+		flag = "no_colorshift",
+		callback = function(state)
+			no_colorshift = state
+		end,
+	})
+	--
+	Worlddev_optix:addToggle({
+		text = "no_grass",
+		default = false,
+		flag = "no_grass",
+		callback = function(bool)
+			sethiddenproperty(dev_optix.work_space.Terrain, "Decoration", not bool)
+		end,
+	})
+	--
+	Worlddev_optix:addToggle({
+		text = "no_Clouds",
+		default = false,
+		flag = "no_Clouds",
+		callback = function(bool)
+			sethiddenproperty(game:GetService("Workspace").Terrain.Clouds, "Enabled", not bool)
+		end,
+	})
+	--
+	Worlddev_optix:addColorpicker({
+		text = "ambient_color",
+		ontop = false,
+		flag = "ambient_color",
+		color = Color3.fromRGB(255, 255, 255),
+		callback = function(Value)
+			DesiredColor = Value
+		end,
+	})
+	--
+	local SpoofedFov2
+	SpoofedFov2 = hookmetamethod(
+		game,
+		"__index",
+		newcclosure(function(self, string)
+			if checkcaller() then
+				return SpoofedFov2(self, string)
+			end
+			if self == dev_optix.custom_cam and fovFunc[string] then
+				return fovFunc[string]
+			end
+			return SpoofedFov2(self, string)
+		end)
+	)
+	--
+	local SpoofedFov1
+	SpoofedFov1 = hookmetamethod(
+		game,
+		"__newindex",
+		newcclosure(function(self, string, value)
+			if checkcaller() then
+				return SpoofedFov1(self, string, value)
+			end
+			if self == dev_optix.custom_cam then
+				fovFunc[string] = value
+				if string == "FieldOfView" and FovEnabled then
+					return SpoofedFov1(self, string, SpoofedFov)
+				end
+			end
+			return SpoofedFov1(self, string, value)
+		end)
+	)
+	--
+	local FeildOfView = Tabs.visuals:createGroup("right", "camera_mods")
+	--
+	FeildOfView:addToggle({
+		text = "field_of_view",
+		default = false,
+		flag = "field_of_view",
+		callback = function(state)
+			FovEnabled = state
+		end,
+	})
+	--
+	FeildOfView:addSlider({
+		text = "spoofed_fov",
+		min = 1,
+		max = 120,
+		suffix = "%",
+		float = 1,
+		default = 70,
+		flag = "spoofed_fov",
+		callback = function(Value)
+			SpoofedFov = Value
+		end,
+	})
+	--
+	dev_optix.check_speeds = {
+		ws = cloneref(game:GetService("Workspace")),
+		uis = cloneref(game:GetService("UserInputService")),
+		rs = cloneref(game:GetService("RunService")),
+		enabled = false,
+		speed_enabled = false,
+		dir = Vector3.zero,
+		speed = 1,
+		target = 40,
+		accel = 1,
+		start = 1,
+		bouncing = false,
+		doing_bounce = false,
+		hold_shift = false,
+		hold_c = false,
+		get_grounded = nil,
+		lastcf = nil,
+		last_y = nil,
+		was_enabled = false,
+		move = {
+			[Enum.KeyCode.W] = Vector3.new(0, 0, 1),
+			[Enum.KeyCode.S] = Vector3.new(0, 0, -1),
+			[Enum.KeyCode.A] = Vector3.new(-1, 0, 0),
+			[Enum.KeyCode.D] = Vector3.new(1, 0, 0),
+		},
+	}
+	--
+	task.spawn(function()
+		while true do
+			if dev_optix.check_speeds.target > 40 then
+				dev_optix.check_speeds.enabled = false
+			end
+			task.wait(0.1)
+		end
+	end)
+	--
+	task.spawn(function()
+		while true do
+			if dev_optix.check_speeds.speed > 40 then
+				dev_optix.check_speeds.enabled = false
+			end
+			task.wait(0.1)
+		end
+	end)
+	--
+	task.spawn(function()
+		while true do
+			if dev_optix.check_speeds.accel > 1 then
+				dev_optix.check_speeds.enabled = false
+			end
+			task.wait(0.1)
+		end
+	end)
+	--
+	task.spawn(function()
+		while true do
+			if dev_optix.check_speeds.start > 1 then
+				dev_optix.check_speeds.enabled = false
+			end
+			task.wait(0.1)
+		end
+	end)
+	--
+	dev_optix.check_speeds.cam = dev_optix.check_speeds.ws.CurrentCamera
+	dev_optix.check_speeds.plr = dev_optix.check_speeds.ws.Ignore.LocalCharacter
+	dev_optix.check_speeds.root = dev_optix.check_speeds.plr.Middle
+	dev_optix.check_speeds.lastcf = dev_optix.check_speeds.root.CFrame
+	--
+	for _, v in next, getgc(true) do
+		if typeof(v) == "function" and debug.getinfo(v).name == "IsGrounded" then
+			dev_optix.check_speeds.get_grounded = v
+			break
+		end
+	end
+	--
+	function dev_optix.check_speeds:get_height()
+		local p = self.root.Position
+		local r = RaycastParams.new()
+		r.FilterType = Enum.RaycastFilterType.Blacklist
+		r.FilterDescendantsInstances = { self.ws.Ignore }
+		r.IgnoreWater = true
+		local res = self.ws:Raycast(p, Vector3.new(0, -10, 0), r)
+		if res then
+			local n, h = res.Normal, res.Position.Y
+			local a = math.deg(math.acos(n.Y))
+			if math.abs(p.Y - h) > 20 then
+				return nil
+			end
+			return h, n.Y, a
+		end
+		return nil
+	end
+	--
+	dev_optix.check_speeds.uis.InputBegan:Connect(function(i, g)
+		if g then
+			return
+		end
+		local k = i.KeyCode
+		if k == Enum.KeyCode.LeftShift or k == Enum.KeyCode.RightShift then
+			dev_optix.check_speeds.hold_shift = true
+		end
+		if k == Enum.KeyCode.C then
+			dev_optix.check_speeds.hold_c = true
+		end
+		if dev_optix.check_speeds.move[k] then
+			dev_optix.check_speeds.dir += dev_optix.check_speeds.move[k]
+		end
+	end)
+	--
+	dev_optix.check_speeds.uis.InputEnded:Connect(function(i, g)
+		if g then
+			return
+		end
+		local k = i.KeyCode
+		if k == Enum.KeyCode.LeftShift or k == Enum.KeyCode.RightShift then
+			dev_optix.check_speeds.hold_shift = false
+		end
+		if k == Enum.KeyCode.C then
+			dev_optix.check_speeds.hold_c = false
+		end
+		if not dev_optix.check_speeds.hold_shift or not dev_optix.check_speeds.hold_c then
+			dev_optix.check_speeds.speed = dev_optix.check_speeds.start
+		end
+		if dev_optix.check_speeds.move[k] then
+			dev_optix.check_speeds.dir -= dev_optix.check_speeds.move[k]
+		end
+	end)
+	--
+	dev_optix.check_speeds.rs.RenderStepped:Connect(LPH_NO_VIRTUALIZE(function()
+		local s = dev_optix.check_speeds
+		s.enabled = s.speed_enabled and s.hold_shift and s.hold_c
+
+		if s.enabled and s.hold_shift and s.hold_c then
+			dev_optix.check_speeds.accel = 1
+			dev_optix.check_speeds.speed = 40
+			s.root.Velocity += (s.cam.CFrame.LookVector * s.dir.Z + s.cam.CFrame.RightVector * s.dir.X) * s.speed
+		end
+
+		if s.was_enabled and not s.enabled then
+			s.speed = s.start
+		end
+
+		s.was_enabled = s.enabled
+	end))
+	--
+	task.spawn(function()
+		while task.wait() do
+			local s = dev_optix.check_speeds
+			if
+				s.speed_enabled
+				and s.enabled
+				and s.get_grounded
+				and not s.bouncing
+				and s.get_grounded()
+				and s.root.Velocity.Y <= 0.15
+			then
+				local y, sn, a = s:get_height()
+				if not y then
+					continue
+				end
+				local steep = sn < 0.94 or a > 20
+				local d = (s.last_y and y) and math.abs(y - s.last_y) or 0
+				if steep or d > 1.2 then
+					s.last_y = y
+					continue
+				end
+				s.last_y = y
+				s.bouncing, s.doing_bounce = true, true
+				local delta_y = s.root.Position.Y - y
+				if delta_y < -5 or delta_y > 5 then
+					delta_y = 0
+				end
+				task.wait(math.clamp(delta_y + 0.5, 1.5, 4.5) / 33)
+				s.doing_bounce = false
+				task.wait(0.075)
+				s.bouncing = false
+			end
+		end
+	end)
+	--
+	dev_optix.check_speeds.rs.Heartbeat:Connect(LPH_NO_VIRTUALIZE(function()
+		local s = dev_optix.check_speeds
+		if s.enabled then
+			s.speed = math.min(s.speed + s.accel, s.target)
+		else
+			s.speed = s.start
+		end
+		if s.doing_bounce then
+			s.lastcf = s.root.CFrame
+			local spoof = s.lastcf
+				+ Vector3.new(0, math.clamp((s.root.Position.Y - (s.last_y or s.root.Position.Y)) + 0.5, 1.5, 4.5), 0)
+			s.root.CFrame = spoof
+			s.rs.RenderStepped:Wait()
+			s.root.CFrame = s.lastcf
+		end
+	end))
+	--
+	local __index
+	__index = hookmetamethod(
+		game,
+		"__index",
+		newcclosure(function(s, k)
+			if
+				not checkcaller()
+				and s == dev_optix.check_speeds.root
+				and k == "CFrame"
+				and dev_optix.check_speeds.doing_bounce
+			then
+				return dev_optix.check_speeds.lastcf
+			end
+			return __index(s, k)
+		end)
+	)
+	--
+	local speed_hacks = Tabs.misc:createGroup("left", "Speed Hack")
+	speed_hacks:addToggle({
+		text = "speed_hack",
+		default = false,
+		flag = "speed_hack",
+		callback = function(state)
+			dev_optix.check_speeds.speed_enabled = state
+		end,
+	})
+	--
+	--// UI Settings \\--
+	local gameTab = Tabs.settings:createGroup("left", "game_settings")
+	--// Game \\--
+	do
+		gameTab
+			:addToggle({ text = "nenu_bind", default = true, flag = "menubind_toggle", callback = function(state) end })
+			:addKeybind({
+				text = "menu_bind",
+				type = "toggle",
+				key = Enum.KeyCode.K,
+				flag = "menubindkeybind_toggle",
+				callback = function(state)
+					Library.keybind = state
+				end,
+			})
+		gameTab:addButton({
+			text = "copy_join_code",
+			callback = function(state)
+				setclipboard(
+					("game:GetService('TeleportService'):TeleportToPlaceInstance(%s, '%s')"):format(
+						game.PlaceId,
+						game.JobId
+					)
+				)
+				Library:Notify("Optix.Wtf - succesfully copied join code!", 5)
+			end,
+		})
+		gameTab:addButton({
+			text = "rejoin_game",
+			callback = function(Value)
+				game:GetService("TeleportService"):TeleportToPlaceInstance(game.PlaceId, game.JobId)
+				library:Notify("Optix.Wtf - succesfully rejoining server!", 5)
+			end,
+		})
+	end
+
+	local createConfigs = Tabs.settings:createGroup("right", "Configs")
+
+	do --// Configs \\--
+		createConfigs:addTextbox({ text = "config_name:", flag = "config_name" })
+		createConfigs:addButton({ text = "create_config", callback = Library.createConfig })
+		createConfigs:addConfigbox({ flag = "config_box", values = {} })
+		createConfigs:addButton({ text = "load_config", callback = Library.loadConfig })
+		createConfigs:addButton({ text = "overwrite_config", callback = Library.saveConfig })
+		createConfigs:addButton({
+			text = "refresh_configs",
+			callback = function(refresh)
+				Library:refreshConfigs(refresh)
+				Library:Notify("Succesfully: refreshed all cfg's!", 5)
+			end,
+		})
+		createConfigs:addButton({ text = "delete_config", callback = Library.deleteConfig })
+	end
+
+	Library:refreshConfigs()
+	Library:Notify(string.format("Success: Optix.Wtf Paid Script Loaded In %.2fs", os.clock() - dev_optix.os_clock), 15)
+end
+return dev_optix
